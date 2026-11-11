@@ -1,0 +1,22 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "tatua-campus",
+          "appId": "1:152377482200:android:327db3093fc1ee6ca170ad",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "tatua-campus",
+          "configurations": {
+            "android": "1:152377482200:android:327db3093fc1ee6ca170ad",
+            "ios": "1:152377482200:ios:a9633a60e4ba8a3aa170ad"
+          }
+        }
+      }
+    }
+  }
+}

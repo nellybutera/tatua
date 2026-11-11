@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "152377482200",
+    "project_id": "tatua-campus",
+    "storage_bucket": "tatua-campus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:152377482200:android:327db3093fc1ee6ca170ad",
+        "android_client_info": {
+          "package_name": "com.alu.tatua"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1YahF1IGKpGfd6Hwon2AxrK9I0ML12Xw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
