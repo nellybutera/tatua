@@ -29,6 +29,7 @@ class AppLogo extends StatelessWidget {
 }
 
 /// Status pill: always icon + label (never colour alone, for accessibility).
+// status = icon + word, never just a color. colorblind folks need to read it too
 class StatusBadge extends StatelessWidget {
   const StatusBadge(this.status, {super.key, this.compact = false});
   final IncidentStatus status;
@@ -102,6 +103,7 @@ String timeAgo(DateTime t) {
   return DateFormat('d MMM yyyy').format(t);
 }
 
+// the report card you see in every list. high urgency + still open = red border, can't miss it
 class IncidentCard extends StatelessWidget {
   const IncidentCard({super.key, required this.incident, required this.onTap});
   final Incident incident;

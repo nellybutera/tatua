@@ -13,6 +13,11 @@ class AuthService {
   Stream<User?> userChanges() => _auth.userChanges();
   User? get currentUser => _auth.currentUser;
 
+  // sign up in 4 moves:
+  //   1. not an @alustudent.com email? bye, we don't even bother Firebase
+  //   2. make the account
+  //   3. save their name
+  //   4. fire off the verification email (you're stuck on "verify email" till you click it)
   Future<void> signUp({required String name, required String email, required String password}) async {
     if (!AppConstants.isStudentEmail(email)) {
       throw FirebaseAuthException(code: 'not-alu-email');
@@ -29,6 +34,9 @@ class AuthService {
 
   Future<void> resendVerification() async => _auth.currentUser?.sendEmailVerification();
 
+  // this runs when you tap "I've verified my email"
+  // heads up: this one bit me. reload() first = Firestore still thinks you're unverified.
+  // so it's token FIRST, then reload. order matters here.
   /// Reloads the user and refreshes the ID token so Firestore rules see
   /// email_verified = true straight after the user clicks the link.
   Future<bool> refreshVerification() async {
@@ -43,6 +51,8 @@ class AuthService {
 
   /// Creates the student profile the first time a verified student signs in.
   /// (Rules only allow this once the email is verified.)
+  // role is ALWAYS 'student' here. there's literally no code that makes someone staff,
+  // that only happens by hand in the Firebase console
   Future<void> ensureStudentProfile(User user) async {
     await user.getIdToken(true); // make sure the rules see the verified email
     final ref = _db.collection('users').doc(user.uid);

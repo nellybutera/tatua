@@ -26,12 +26,16 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(uid);
     }
 
+    // the real security lives HERE. these run on Google's servers for every single request,
+    // so even if someone hacks the app, they still hit this wall. the UI just hides buttons.
+    // student = logged in + verified email + @alustudent.com
     function isStudent() {
       return signedIn()
         && request.auth.token.email_verified == true
         && request.auth.token.email.matches('.*@alustudent[.]com$');
     }
 
+    // staff = @alueducation.com AND role 'staff' in their user doc. both, not either
     function isStaff() {
       return signedIn()
         && request.auth.token.email.matches('.*@alueducation[.]com$')
@@ -95,7 +99,7 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 60
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.role == 'student'
+        && request.resource.data.role == 'student'   // nice try, you can't sign up as staff
         && request.resource.data.createdAt == request.time;
 
       // Only the display name can change: role and email are locked.
@@ -125,14 +129,16 @@ service cloud.firestore {
 
       // Create: must be written in the same batch as private/owner (owned by the caller).
       allow create: if (isStudent() || isStaff())
+        // getAfter = "after this batch finishes": the owner doc better say it's you
         && getAfter(ownerPath(incidentId)).data.reporterId == request.auth.uid
         && request.resource.data.keys().hasOnly([
              'title', 'description', 'category', 'location', 'urgency', 'photoUrl',
              'status', 'isAnonymous', 'reporterId', 'reporterName', 'createdAt', 'updatedAt'])
         && validContent(request.resource.data)
-        && request.resource.data.status == 'submitted'
+        && request.resource.data.status == 'submitted'   // everyone starts at submitted, no skipping
         && request.resource.data.isAnonymous is bool
         && (
+             // anonymous for real: the server REJECTS it if your name or id sneaks in
              // Anonymous: no identifying fields on the public document.
              (request.resource.data.isAnonymous == true
                && !('reporterId' in request.resource.data)
@@ -159,7 +165,7 @@ service cloud.firestore {
         ||
         (
           isStaff()
-          && changedOnly(['status', 'lastNote', 'updatedAt'])
+          && changedOnly(['status', 'lastNote', 'updatedAt'])   // staff can't rewrite what the student said
           && validStatus(request.resource.data.status)
           && request.resource.data.status != resource.data.status
           && (!('lastNote' in request.resource.data)
@@ -202,7 +208,7 @@ service cloud.firestore {
           && (request.resource.data.note == null
               || (request.resource.data.note is string && request.resource.data.note.size() <= 300))
           && request.resource.data.changedAt == request.time;
-        allow update, delete: if false;
+        allow update, delete: if false;   // history is permanent. no editing the receipts
       }
     }
   }

@@ -11,11 +11,14 @@ class CloudinaryService {
   CloudinaryService({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
 
+  // why Cloudinary? Firebase Storage wanted the paid plan, facilitator said Cloudinary is fine.
+  // "unsigned preset" = no secret key inside the app. the preset decides what's allowed.
   static const maxBytes = 5 * 1024 * 1024; // 5 MB
 
   /// Returns the secure https URL of the uploaded image.
   Future<String> uploadImage(File file, {void Function(double progress)? onProgress}) async {
     final length = await file.length();
+    // too big? stop right here, don't waste anyone's data
     if (length > maxBytes) {
       throw const CloudinaryException('Photo is larger than 5 MB. Please choose a smaller one.');
     }
@@ -34,6 +37,7 @@ class CloudinaryService {
       final msg = (json['error'] as Map?)?['message'] ?? 'Upload failed (${streamed.statusCode})';
       throw CloudinaryException(msg.toString());
     }
+    // we only keep the https link. Firestore stores the link, not the picture
     return json['secure_url'] as String;
   }
 }

@@ -8,6 +8,15 @@ import '../services/auth_service.dart';
 import '../services/cloudinary_service.dart';
 import '../services/incident_service.dart';
 
+// ok so here's how the state management works (Riverpod)
+// screens never talk to Firebase directly. they just "watch" these providers.
+//   Provider        -> holds one thing, like a service
+//   StreamProvider  -> LIVE Firestore data. it changes, the screen redraws itself
+//   .family         -> same provider but you hand it something, like an incident id
+// providers can watch each other, so it's a chain:
+//   who's logged in -> their profile -> their report ids -> their actual reports
+// the layers: Screens -> Providers -> Services -> Firebase / Cloudinary
+
 // ---------- services (single instances, easy to swap for fakes in tests) ----------
 final firebaseAuthProvider = Provider<FirebaseAuth>((ref) => FirebaseAuth.instance);
 final firestoreProvider = Provider<FirebaseFirestore>((ref) => FirebaseFirestore.instance);
@@ -43,6 +52,9 @@ final recentIncidentsProvider = StreamProvider<List<Incident>>(
   (ref) => ref.watch(incidentServiceProvider).watchRecent(),
 );
 
+// why a list of ids and not just "where reporterId == me"?
+// cuz anonymous reports don't HAVE a reporterId, that search would miss them.
+// so everyone keeps their own private little list instead
 final myReportIdsProvider = StreamProvider<List<String>>((ref) {
   final uid = ref.watch(authUserProvider).value?.uid;
   if (uid == null) return Stream.value(const []);
@@ -69,6 +81,7 @@ final reporterNameProvider = FutureProvider.family<String?, String>(
 );
 
 /// Whether the current user owns a report (works for anonymous reports too).
+// is this report mine? that decides if you see Edit/Delete
 final isMyReportProvider = Provider.family<bool, String>((ref, id) {
   final ids = ref.watch(myReportIdsProvider).value ?? const <String>[];
   return ids.contains(id);

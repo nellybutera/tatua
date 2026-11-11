@@ -39,6 +39,8 @@ class IncidentFilter {
         sort: sort ?? this.sort,
       );
 
+  // "pure" = same input, same output, no Firebase anywhere near it.
+  // that's why the unit tests can just throw fake lists at it
   /// Pure function so it is easy to unit test.
   List<Incident> apply(List<Incident> all) {
     final q = query.trim().toLowerCase();
@@ -70,9 +72,13 @@ class IncidentFilter {
   }
 }
 
+// Notifier = state that can actually change.
+// search box / filter sheet call setQuery, setStatus, toggleCategory etc,
+// and anything watching this redraws on its own
 class IncidentFilterNotifier extends Notifier<IncidentFilter> {
   @override
   IncidentFilter build() {
+    // (this was a real bug btw: my search from one account showed up on the other one)
     // Start fresh whenever a different user signs in, so one account's
     // search/filters never carry over to the next.
     ref.watch(authUserProvider.select((u) => u.value?.uid));
