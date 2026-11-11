@@ -1,0 +1,209 @@
+rules_version = '2';
+
+// Tatua: Firestore security rules
+//
+// Roles
+//   student: verified @alustudent.com email
+//   staff:   @alueducation.com email AND users/{uid}.role == 'staff'
+//            (the role can only be set by hand in the Firebase console)
+//
+// Data
+//   users/{uid}                              profile (owner + staff can read)
+//   users/{uid}/myReports/{incidentId}       private pointer to the user's own reports
+//   incidents/{incidentId}                   public report (no reporter id if anonymous)
+//   incidents/{incidentId}/private/owner     who filed it (owner + staff only)
+//   incidents/{incidentId}/statusHistory/{x} timeline entries (staff write)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function isStudent() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('.*@alustudent[.]com$');
+    }
+
+    function isStaff() {
+      return signedIn()
+        && request.auth.token.email.matches('.*@alueducation[.]com$')
+        && exists(userDoc(request.auth.uid))
+        && get(userDoc(request.auth.uid)).data.role == 'staff';
+    }
+
+    function ownerPath(incidentId) {
+      return /databases/$(database)/documents/incidents/$(incidentId)/private/owner;
+    }
+
+    function incidentPath(incidentId) {
+      return /databases/$(database)/documents/incidents/$(incidentId);
+    }
+
+    function isOwner(incidentId) {
+      return signedIn()
+        && exists(ownerPath(incidentId))
+        && get(ownerPath(incidentId)).data.reporterId == request.auth.uid;
+    }
+
+    function changedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function validCategory(c) {
+      return c in ['facilities', 'water', 'electricity', 'sanitation', 'safety', 'furniture', 'other'];
+    }
+
+    function validUrgency(u) {
+      return u in ['low', 'medium', 'high'];
+    }
+
+    function validStatus(s) {
+      return s in ['submitted', 'in_review', 'in_progress', 'resolved', 'rejected'];
+    }
+
+    function validPhoto(p) {
+      return p == null
+        || (p is string && p.matches('^https://res[.]cloudinary[.]com/dasumvwgg/.*'));
+    }
+
+    // Content fields a student is allowed to set/edit.
+    function validContent(d) {
+      return d.title is string && d.title.size() >= 3 && d.title.size() <= 60
+        && d.description is string && d.description.size() >= 10 && d.description.size() <= 500
+        && validCategory(d.category)
+        && d.location is string && d.location.size() >= 2 && d.location.size() <= 100
+        && validUrgency(d.urgency)
+        && validPhoto(d.photoUrl);
+    }
+
+    // ---------- users ----------
+    match /users/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isStaff();
+
+      // Students create their own profile; nobody can make themselves staff.
+      allow create: if isStudent()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 60
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'student'
+        && request.resource.data.createdAt == request.time;
+
+      // Only the display name can change: role and email are locked.
+      allow update: if signedIn() && request.auth.uid == uid
+        && changedOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 60;
+
+      allow delete: if false;
+
+      // Private list of "my reports" so anonymous reports still show up for their owner.
+      match /myReports/{incidentId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid
+          && getAfter(ownerPath(incidentId)).data.reporterId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn() && request.auth.uid == uid;
+        allow update: if false;
+      }
+    }
+
+    // ---------- incidents ----------
+    match /incidents/{incidentId} {
+      // Any signed-in student or staff member can browse reports.
+      allow read: if isStudent() || isStaff();
+
+      // Create: must be written in the same batch as private/owner (owned by the caller).
+      allow create: if (isStudent() || isStaff())
+        && getAfter(ownerPath(incidentId)).data.reporterId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+             'title', 'description', 'category', 'location', 'urgency', 'photoUrl',
+             'status', 'isAnonymous', 'reporterId', 'reporterName', 'createdAt', 'updatedAt'])
+        && validContent(request.resource.data)
+        && request.resource.data.status == 'submitted'
+        && request.resource.data.isAnonymous is bool
+        && (
+             // Anonymous: no identifying fields on the public document.
+             (request.resource.data.isAnonymous == true
+               && !('reporterId' in request.resource.data)
+               && !('reporterName' in request.resource.data))
+             ||
+             // Named: reporter fields must be the caller.
+             (request.resource.data.isAnonymous == false
+               && request.resource.data.reporterId == request.auth.uid
+               && request.resource.data.reporterName is string)
+           )
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      // Owner edits content while the report is still 'submitted'.
+      // Staff change only the status (plus a note and timestamp).
+      allow update: if
+        (
+          isOwner(incidentId)
+          && resource.data.status == 'submitted'
+          && changedOnly(['title', 'description', 'category', 'location', 'urgency', 'photoUrl', 'updatedAt'])
+          && validContent(request.resource.data)
+          && request.resource.data.updatedAt == request.time
+        )
+        ||
+        (
+          isStaff()
+          && changedOnly(['status', 'lastNote', 'updatedAt'])
+          && validStatus(request.resource.data.status)
+          && request.resource.data.status != resource.data.status
+          && (!('lastNote' in request.resource.data)
+              || (request.resource.data.lastNote is string && request.resource.data.lastNote.size() <= 300))
+          && request.resource.data.updatedAt == request.time
+        );
+
+      // Owner may delete only while nobody has started working on it.
+      allow delete: if isOwner(incidentId) && resource.data.status == 'submitted';
+
+      // Who filed the report: visible to the owner and staff only.
+      match /private/{docId} {
+        allow read: if docId == 'owner'
+          && ((signedIn() && resource.data.reporterId == request.auth.uid) || isStaff());
+
+        // Only when the incident itself is being created in the same batch.
+        allow create: if docId == 'owner'
+          && (isStudent() || isStaff())
+          && !exists(incidentPath(incidentId))
+          && existsAfter(incidentPath(incidentId))
+          && request.resource.data.keys().hasOnly(['reporterId', 'reporterName'])
+          && request.resource.data.reporterId == request.auth.uid
+          && request.resource.data.reporterName is string;
+
+        allow delete: if docId == 'owner'
+          && signedIn() && resource.data.reporterId == request.auth.uid
+          && !existsAfter(incidentPath(incidentId));
+
+        allow update: if false;
+      }
+
+      // Timeline entries: staff only, and must match the incident's new status.
+      match /statusHistory/{entryId} {
+        allow read: if isStudent() || isStaff();
+        allow create: if isStaff()
+          && request.resource.data.keys().hasOnly(['status', 'note', 'changedBy', 'changedAt'])
+          && validStatus(request.resource.data.status)
+          && getAfter(incidentPath(incidentId)).data.status == request.resource.data.status
+          && request.resource.data.changedBy == request.auth.uid
+          && (request.resource.data.note == null
+              || (request.resource.data.note is string && request.resource.data.note.size() <= 300))
+          && request.resource.data.changedAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
