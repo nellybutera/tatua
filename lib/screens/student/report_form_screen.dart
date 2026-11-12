@@ -103,7 +103,6 @@ class _ReportFormScreenState extends ConsumerState<ReportFormScreen> {
 
   Future<void> _submit() async {
     setState(() => _triedSubmit = true);
-    // runs every validator in the form (title 3+ chars, description 10+, pick a location...)
     final validForm = _form.currentState!.validate();
     if (!validForm || _category == null || _building == null) {
       showSnack(context, 'Please fill in the highlighted fields.', error: true);
@@ -115,7 +114,6 @@ class _ReportFormScreenState extends ConsumerState<ReportFormScreen> {
       String? photoUrl = _existingPhotoUrl;
       if (_photo != null) {
         setState(() => _progressText = 'Uploading photo…');
-        // async part 1: upload the photo and WAIT for the link...
         photoUrl = await ref.read(cloudinaryServiceProvider).uploadImage(_photo!);
       }
       setState(() => _progressText = _isEdit ? 'Saving changes…' : 'Submitting report…');
@@ -130,7 +128,6 @@ class _ReportFormScreenState extends ConsumerState<ReportFormScreen> {
         photoUrl: photoUrl,
       );
 
-      // async part 2: ...then save the report with that link to Firestore
       final service = ref.read(incidentServiceProvider);
       if (_isEdit) {
         await service.updateContent(widget.existing!.id, draft);
@@ -144,7 +141,6 @@ class _ReportFormScreenState extends ConsumerState<ReportFormScreen> {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ReportSuccessScreen(incidentId: id)));
       }
     } on CloudinaryException catch (e) {
-      // upload flopped -> nothing got saved, just show a friendly message, no crash
       if (mounted) showSnack(context, e.message, error: true);
     } catch (e) {
       if (mounted) showSnack(context, AuthService.friendlyError(e), error: true);

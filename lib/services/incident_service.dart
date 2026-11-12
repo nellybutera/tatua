@@ -65,18 +65,12 @@ class IncidentService {
     return snap.data()?['reporterName'] as String?;
   }
 
-  // creating a report = ONE batch, THREE docs, all or nothing:
-  //   1. incidents/{id}                 the public report everyone sees
-  //   2. incidents/{id}/private/owner   who actually sent it (only you + staff can peek)
-  //   3. users/{me}/myReports/{id}      your own list, so even anonymous ones show in My Reports
-  // if the app dies halfway, nothing gets saved. no orphan reports floating around
   Future<String> create({
     required IncidentDraft draft,
     required String uid,
     required String reporterName,
   }) async {
     final ref = _incidents.doc();
-    // time comes from Google's server, not the phone, so nobody can fake the date
     final now = FieldValue.serverTimestamp();
     final batch = _db.batch();
 
@@ -84,7 +78,6 @@ class IncidentService {
       ...draft.contentMap(),
       'status': IncidentStatus.submitted.value,
       'isAnonymous': draft.isAnonymous,
-      // anonymous? then your name and id just... aren't on here. at all.
       // Anonymous reports carry no identifying fields at all.
       if (!draft.isAnonymous) 'reporterId': uid,
       if (!draft.isAnonymous) 'reporterName': reporterName,
@@ -94,7 +87,7 @@ class IncidentService {
     batch.set(_owner(ref.id), {'reporterId': uid, 'reporterName': reporterName});
     batch.set(_myReport(uid, ref.id), {'createdAt': now});
 
-    await batch.commit(); // send all 3 in one go
+    await batch.commit();
     return ref.id;
   }
 
@@ -104,7 +97,6 @@ class IncidentService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-  // delete is a batch too, so we don't leave junk owner/myReports docs behind
   Future<void> delete(String id, String uid) async {
     final batch = _db.batch()
       ..delete(_incidents.doc(id))
@@ -128,8 +120,6 @@ class IncidentService {
       'lastNote': cleanNote ?? FieldValue.delete(),
       'updatedAt': now,
     });
-    // every status change drops a history entry. that's literally what draws
-    // the timeline on the details screen (who changed it, when, and the note)
     batch.set(_incidents.doc(id).collection('statusHistory').doc(), {
       'status': status.value,
       'note': cleanNote,

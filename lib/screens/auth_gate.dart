@@ -30,12 +30,7 @@ class AuthGate extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // basically the bouncer of the app.
-    // it's watching the live login stream, so the second you log in or out it rebuilds
-    // and you land on the right screen. no Navigator.push after login, and you can't
-    // hit Back to sneak into the app after logging out
     final auth = ref.watch(authUserProvider);
-    // .when() = the 3 moods of async data: still loading, broke, or got the data
     return auth.when(
       loading: () => const _Loading(),
       error: (e, _) => const WelcomeScreen(),
@@ -43,8 +38,6 @@ class AuthGate extends ConsumerWidget {
         if (user == null) return const WelcomeScreen();
         final email = user.email ?? '';
 
-        // student email? verify first, then we make sure your profile exists
-        // (and if that fails you get a Retry screen instead of a dead end)
         if (AppConstants.isStudentEmail(email)) {
           if (!user.emailVerified) return VerifyEmailScreen(email: email);
           final boot = ref.watch(_studentProfileBootstrap(user.uid));
@@ -54,10 +47,8 @@ class AuthGate extends ConsumerWidget {
           }
           return _byRole(ref, user);
         }
-        // staff email? nice, but we still check your role in Firestore (see _byRole)
         if (AppConstants.isStaffEmail(email)) return _byRole(ref, user, staffEmail: true);
 
-        // gmail, yahoo, whatever else -> nope
         return const RestrictedScreen(
           message: 'Tatua is only available to ALU students and staff. Please sign in with your ALU email.',
         );
@@ -77,7 +68,6 @@ class AuthGate extends ConsumerWidget {
                   message: 'Your staff account has not been set up yet. Ask an administrator to grant staff access.')
               : const _Loading();
         }
-        // staff needs BOTH: the staff email AND role 'staff'. one without the other = no entry
         if (appUser.isStaff && staffEmail) return const StaffShell();
         if (staffEmail) {
           return const RestrictedScreen(message: 'This account does not have staff access.');

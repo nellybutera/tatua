@@ -32,8 +32,6 @@ class IncidentDetailsScreen extends ConsumerWidget {
             body: const EmptyState(icon: Icons.delete_outline_rounded, title: 'This report no longer exists'),
           );
         }
-        // you can only edit/delete your OWN report, and only before staff start on it.
-        // (the rules enforce this too, hiding the button is just the friendly part)
         final canEdit = isMine && i.status == IncidentStatus.submitted;
         return Scaffold(
           appBar: AppBar(
@@ -53,7 +51,6 @@ class IncidentDetailsScreen extends ConsumerWidget {
                 ),
             ],
           ),
-          // staff get the "Update status" button, students don't
           bottomNavigationBar: isStaff
               ? SafeArea(
                   child: Padding(

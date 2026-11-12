@@ -8,9 +8,7 @@ import 'screens/auth_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // gotta wake Firebase up before anything else touches it
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // ProviderScope = the box where all the Riverpod state lives. no box, no providers.
   runApp(const ProviderScope(child: TatuaApp()));
 }
 
@@ -23,7 +21,6 @@ class TatuaApp extends StatelessWidget {
       title: 'Tatua',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      // no login page hardcoded here. AuthGate figures out where you belong
       home: const AuthGate(),
     );
   }

@@ -22,7 +22,6 @@ class _UpdateStatusSheetState extends ConsumerState<UpdateStatusSheet> {
   IncidentStatus? _status;
   bool _saving = false;
 
-  // closing a report with zero explanation is rude. so Resolved/Rejected = note required
   // A note is required when closing a report so the student knows why.
   bool get _noteRequired => _status == IncidentStatus.resolved || _status == IncidentStatus.rejected;
 
