@@ -1,114 +1,114 @@
-# Tatua: Campus Incident Reporting App
+# Tatua
 
-*Tatua* is Swahili for "solve". The app lets ALU students report campus problems such as broken facilities, water shortages, power cuts, sanitation and safety issues, and follow each report until it is fixed. Authorised staff review the reports and move them through a clear status workflow.
+Tatua is a campus incident reporting app for ALU. If something breaks on campus, like a leaking tap, a power cut or a broken lock, students can report it in a few taps and follow it until it gets fixed. Staff see the reports, deal with the urgent ones first, and update the status so the student always knows what's happening.
 
-Built with **Flutter**, **Firebase Authentication**, **Cloud Firestore**, **Riverpod** and **Cloudinary**. Runs on Android (emulator or device) and iOS.
+I built it with **Flutter**, **Firebase Authentication**, **Cloud Firestore**, **Riverpod** and **Cloudinary**. It runs on Android and the same code builds for iOS.
 
-> **Image storage note:** the brief asks for Firebase Storage. Storage now needs the paid Blaze plan, so the facilitator approved Cloudinary as the image store for this project. Photos go to Cloudinary through an unsigned upload preset, and only the HTTPS link is saved in Firestore.
+**Demo video:** https://youtu.be/ozp9sAL4onA
 
-## Features
+> **Note on photos:** the assignment asks for Firebase Storage, but it now needs the paid Blaze plan. The facilitator allowed me to use Cloudinary instead. Photos go to Cloudinary and only the link is saved in Firestore.
 
-| Area | What it does |
-|---|---|
-| Authentication | Sign up with an `@alustudent.com` email, email verification, log in, password reset, logout |
-| Roles | Students and staff (`@alueducation.com` with `role: staff`), enforced by Firestore security rules |
-| Report an issue | Category, title, description, location, urgency, optional photo (camera or gallery, compressed), optional anonymous reporting |
-| Browse | Home summary, My Reports with status filter, Explore with search, category, status and location filters, and sorting |
-| Track | Incident details with a status timeline (Submitted → In Review → In Progress → Resolved / Rejected) and staff notes |
-| Manage (owner) | Edit or delete your own report while it is still "Submitted" |
-| Staff | Dashboard (new today, open, in progress, resolved), "needs attention" list ordered by urgency, category breakdown, status updates with a note |
-| Privacy | Anonymous reports store **no** reporter fields on the public document. Only the owner and staff can read the private owner record |
+---
 
-## Architecture
+## What the app does
+
+**Students can:**
+- sign up with an `@alustudent.com` email (and they have to verify it first)
+- report a problem with a category, title, description, location, urgency and a photo
+- report anonymously if they don't want their name on it
+- see their own reports and everyone else's, then search and filter them
+- follow a report's timeline, with notes from staff
+- edit or delete their report while it's still "Submitted"
+
+**Staff can:**
+- see a dashboard with new, open, in-progress and resolved reports
+- see a "needs attention" list, with urgent and older reports at the top
+- move a report from Submitted to In Review, In Progress, then Resolved or Rejected
+- add a note with each update (a note is required when closing a report)
+
+---
+
+## How the code is organised
 
 ```
 lib/
-├── core/
-│   ├── constants/   app_constants.dart (enums: category, urgency, status), cloudinary_config.dart
-│   └── theme/       app_theme.dart (design tokens + Material 3 theme)
-├── models/          app_user.dart, incident.dart (Firestore <-> Dart)
-├── services/        auth_service.dart, incident_service.dart, cloudinary_service.dart
-├── providers/       providers.dart (Riverpod), filter_provider.dart (Notifier)
-├── widgets/         common.dart (status badge, cards, empty/error states)
-├── screens/
-│   ├── auth/        welcome, sign up, log in, verify email, forgot password
-│   ├── student/     shell, home, report form, success, my reports
-│   ├── staff/       shell, dashboard, update status sheet
-│   ├── shared/      explore, incident details, profile, restricted
-│   └── auth_gate.dart  decides which part of the app to show
+├── core/        theme and fixed values (categories, urgency, statuses)
+├── models/      turn Firestore documents into Dart objects
+├── services/    the only code that talks to Firebase and Cloudinary
+├── providers/   Riverpod providers that share data with the screens
+├── widgets/     reusable pieces (status badge, report card, empty state)
+├── screens/     auth, student, staff and shared screens + auth_gate.dart
 └── main.dart
 ```
 
-The code has three layers:
-- **UI widgets** only read Riverpod providers and call services.
-- **Services** hold all Firebase and HTTP code.
-- **Models** convert Firestore documents.
+The idea is simple: **screens never talk to Firebase directly.** They read data from providers, and the providers get it from the services. That keeps the screens clean and means a change (like moving from Firebase Storage to Cloudinary) only touches one file.
 
-Live data comes from Firestore `snapshots()` streams exposed as `StreamProvider`s, so every screen updates in real time.
+`auth_gate.dart` decides where each user goes: the welcome screen, the verify-email screen, the student app, the staff app or an "access restricted" screen.
 
-## Firestore data model
+---
 
-```
-users/{uid}                               name, email, role ('student' | 'staff'), createdAt
-users/{uid}/myReports/{incidentId}        createdAt (private list of the user's own reports)
-incidents/{incidentId}                    title, description, category, location, urgency, status,
-                                          photoUrl, isAnonymous, [reporterId, reporterName], lastNote,
-                                          createdAt, updatedAt
-incidents/{incidentId}/private/owner      reporterId, reporterName (owner + staff only)
-incidents/{incidentId}/statusHistory/{id} status, note, changedBy, changedAt
-```
+## How the data is stored (Firestore)
 
-Multi-document writes use **batched writes**: creating a report, deleting a report, and a status change plus its history entry. The rules validate them together with `getAfter()`.
+| Collection | What's in it |
+|---|---|
+| `users/{uid}` | name, email and role (`student` or `staff`) |
+| `users/{uid}/myReports/{id}` | a private list of my own reports |
+| `incidents/{id}` | the report: title, description, category, location, urgency, status, photo link, timestamps |
+| `incidents/{id}/private/owner` | who actually sent the report (only the owner and staff can read this) |
+| `incidents/{id}/statusHistory/{id}` | every status change, with the note, who changed it and when |
 
-## Security rules (summary)
+Anonymous reports have **no name or user ID** on them at all. The real owner is only in the private `owner` document.
 
-See [`firestore.rules`](firestore.rules).
+---
 
-- Only signed-in, **verified** ALU students and staff can read reports.
-- A student can create a report only as themselves, and it must start as `submitted`. Field types, lengths and allowed values are all validated.
-- The owner can edit or delete a report only while it is `submitted`, and can never change its status.
-- Only staff can change `status`, `lastNote` and `updatedAt`, and add timeline entries.
-- Nobody can make themselves staff. The role can only be set in the Firebase console.
-- Photo links must point to this project's Cloudinary account.
+## Security
 
-Rule tests: `node tool/rules_test.js firestore.rules` runs 23 allow/deny cases through the Firebase Rules test API. You must be logged in with the Firebase CLI first.
+The app hides buttons, but the real protection is in [`firestore.rules`](firestore.rules), which run on Google's servers. In short:
 
-## Getting started
+- only verified ALU students and staff can see reports
+- students can only create reports as themselves, and every report starts as "Submitted"
+- students can only edit or delete their own report, and only before staff start working on it
+- only staff can change a status, and they can't change what the student wrote
+- nobody can make themselves staff (the role is set by hand in the Firebase console)
 
-Prerequisites: Flutter 3.4x, an Android emulator or device, and the Firebase CLI and FlutterFire CLI if you use your own Firebase project.
+---
+
+## Running it yourself
+
+You'll need Flutter (3.4x or newer) and an Android emulator or phone.
 
 ```bash
 git clone https://github.com/nellybutera/tatua.git
 cd tatua
 flutter pub get
-flutter run            # with an emulator running
+flutter run
 ```
 
-To use your own backend:
-1. Create a Firebase project and enable Email/Password sign-in and Firestore.
-2. Run `flutterfire configure`.
-3. Deploy the rules with `firebase deploy --only firestore:rules`.
-4. Create an unsigned Cloudinary upload preset, and put your cloud name and preset in `lib/core/constants/cloudinary_config.dart`.
+That connects to my Firebase project. If you want to use your own instead:
 
-**Creating a staff account:**
-1. Firebase console → Authentication → Add user, with an `@alueducation.com` email.
-2. In Firestore, create `users/<uid>` with `name`, `email`, `role: "staff"` and `createdAt`.
+1. Create a Firebase project and turn on **Email/Password** sign-in and **Firestore**.
+2. Run `flutterfire configure` to connect the app to it.
+3. Deploy the rules: `firebase deploy --only firestore:rules`
+4. Create an **unsigned upload preset** on Cloudinary and put your cloud name and preset in `lib/core/constants/cloudinary_config.dart`.
+
+**Making a staff account:**
+1. In the Firebase console, go to Authentication and add a user with an `@alueducation.com` email.
+2. In Firestore, create `users/<their uid>` with `name`, `email`, `role: "staff"` and `createdAt`.
+
+---
 
 ## Testing
 
 ```bash
-flutter analyze                        # static analysis (0 issues)
-flutter test                           # unit tests: search, filter and sort logic
-node tool/rules_test.js firestore.rules   # 23 security-rule cases
+flutter analyze                          # no issues
+flutter test                             # 8 unit tests for search, filter and sort
+node tool/rules_test.js firestore.rules  # 23 security rule tests (log in to the Firebase CLI first)
 ```
 
-The main workflows were also tested by hand on an Android emulator against the live Firebase project:
-- sign up and verification
-- reporting with a photo, and anonymously
-- edit and delete
-- search
-- staff status updates through to Resolved
+I also tested every flow by hand on an Android emulator with the real Firebase project: signing up and verifying, reporting with a photo, anonymous reports, editing and deleting, searching and filtering, and staff updating a report all the way to Resolved.
+
+---
 
 ## Author
 
-Nelly Teta Butera, African Leadership University, Mobile Application Development (Formative 2).
+Teta Butera Nelly, African Leadership University, Mobile Application Development (Formative Assignment 2)
